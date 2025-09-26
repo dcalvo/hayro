@@ -1,8 +1,11 @@
 //! Ported from <https://github.com/mozilla/pdf.js/blob/master/src/core/cmap.js>
 
 use std::collections::HashMap;
+// Binary cmap support
 
 const MAX_MAP_RANGE: u32 = (1 << 24) - 1; // 0xFFFFFF
+const MAX_NUM_SIZE: usize = 16;
+const MAX_ENCODED_NUM_SIZE: usize = MAX_NUM_SIZE; // ceil(MAX_NUM_SIZE * 7 / 8)
 
 #[derive(Debug)]
 pub(crate) struct CMap {
@@ -635,6 +638,384 @@ pub fn parse_cmap(input: &str) -> Option<CMap> {
     Some(cmap)
 }
 
+fn hex_to_int(a: &[u8], size: usize) -> u32 {
+    let mut n = 0u32;
+    for i in 0..=size {
+        if i < a.len() {
+            n = (n << 8) | a[i] as u32;
+        }
+    }
+    n
+}
+
+fn hex_to_str(a: &[u8], size: usize) -> String {
+    let bytes = if size + 1 <= a.len() { &a[0..=size] } else { a };
+
+    String::from_utf8_lossy(bytes).to_string()
+}
+
+fn add_hex(a: &mut [u8], b: &[u8], size: usize) {
+    let mut c = 0u32;
+    for i in (0..=size).rev() {
+        if i < a.len() && i < b.len() {
+            c += a[i] as u32 + b[i] as u32;
+            a[i] = (c & 255) as u8;
+            c >>= 8;
+        }
+    }
+}
+
+fn inc_hex(a: &mut [u8], size: usize) {
+    let mut c = 1u32;
+    for i in (0..=size).rev() {
+        if i < a.len() && c > 0 {
+            c += a[i] as u32;
+            a[i] = (c & 255) as u8;
+            c >>= 8;
+        }
+    }
+}
+
+struct BinaryCMapStream {
+    buffer: Vec<u8>,
+    pos: usize,
+    end: usize,
+    tmp_buf: Vec<u8>,
+}
+
+impl BinaryCMapStream {
+    fn new(data: Vec<u8>) -> Self {
+        let end = data.len();
+        Self {
+            buffer: data,
+            pos: 0,
+            end,
+            tmp_buf: vec![0; MAX_ENCODED_NUM_SIZE],
+        }
+    }
+
+    fn read_byte(&mut self) -> i32 {
+        if self.pos >= self.end {
+            return -1;
+        }
+        let b = self.buffer[self.pos] as i32;
+        self.pos += 1;
+        b
+    }
+
+    fn read_number(&mut self) -> Result<u32, String> {
+        let mut n = 0u32;
+        let mut last;
+        loop {
+            let b = self.read_byte();
+            if b < 0 {
+                return Err("unexpected EOF in bcmap".to_string());
+            }
+            last = (b & 0x80) == 0;
+            n = (n << 7) | ((b & 0x7f) as u32);
+            if last {
+                break;
+            }
+        }
+        Ok(n)
+    }
+
+    fn read_signed(&mut self) -> Result<i32, String> {
+        let n = self.read_number()?;
+        Ok(if n & 1 != 0 {
+            !((n >> 1) as i32)
+        } else {
+            (n >> 1) as i32
+        })
+    }
+
+    fn read_hex(&mut self, num: &mut [u8], size: usize) -> Result<(), String> {
+        if self.pos + size + 1 > self.end {
+            return Err("unexpected EOF in bcmap".to_string());
+        }
+        let len = (size + 1).min(num.len());
+        num[0..len].copy_from_slice(&self.buffer[self.pos..self.pos + len]);
+        self.pos += size + 1;
+        Ok(())
+    }
+
+    fn read_hex_number(&mut self, num: &mut [u8], size: usize) -> Result<(), String> {
+        let mut last;
+        let mut sp = 0;
+        self.tmp_buf.clear();
+
+        loop {
+            let b = self.read_byte();
+            if b < 0 {
+                return Err("unexpected EOF in bcmap".to_string());
+            }
+            last = (b & 0x80) == 0;
+            if sp < self.tmp_buf.capacity() {
+                self.tmp_buf.push((b & 0x7f) as u8);
+                sp += 1;
+            }
+            if last {
+                break;
+            }
+        }
+
+        let mut i = size as i32;
+        let mut buffer = 0u32;
+        let mut buffer_size: i32 = 0;
+
+        while i >= 0 {
+            while buffer_size < 8 && !self.tmp_buf.is_empty() {
+                let val = self.tmp_buf.pop().unwrap() as u32;
+                buffer |= val << buffer_size;
+                buffer_size += 7;
+            }
+            if (i as usize) < num.len() {
+                num[i as usize] = (buffer & 255) as u8;
+            }
+            i -= 1;
+            buffer >>= 8;
+            buffer_size = buffer_size.saturating_sub(8);
+        }
+        Ok(())
+    }
+
+    fn read_hex_signed(&mut self, num: &mut [u8], size: usize) -> Result<(), String> {
+        self.read_hex_number(num, size)?;
+        let sign = if size < num.len() && (num[size] & 1) != 0 {
+            255
+        } else {
+            0
+        };
+        let mut c = 0u32;
+        for i in 0..=size {
+            if i < num.len() {
+                c = ((c & 1) << 8) | num[i] as u32;
+                num[i] = ((c >> 1) ^ sign as u32) as u8;
+            }
+        }
+        Ok(())
+    }
+
+    fn read_string(&mut self) -> Result<String, String> {
+        let len = self.read_number()? as usize;
+        let mut buf = Vec::with_capacity(len);
+        for _ in 0..len {
+            let val = self.read_number()?;
+            if val <= u32::from(u8::MAX) {
+                buf.push(val as u8);
+            }
+        }
+        Ok(String::from_utf8_lossy(&buf).to_string())
+    }
+}
+
+pub struct BinaryCMapReader;
+
+impl BinaryCMapReader {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn process(&self, data: Vec<u8>, cmap: &mut CMap) -> Result<(), String> {
+        let mut stream = BinaryCMapStream::new(data);
+        let header = stream.read_byte();
+        if header < 0 {
+            return Err("unexpected EOF in bcmap header".to_string());
+        }
+        cmap.vertical = (header & 1) != 0;
+
+        let mut start = vec![0u8; MAX_NUM_SIZE];
+        let mut end = vec![0u8; MAX_NUM_SIZE];
+        let mut char = vec![0u8; MAX_NUM_SIZE];
+        let mut char_code = vec![0u8; MAX_NUM_SIZE];
+        let mut tmp = vec![0u8; MAX_NUM_SIZE];
+
+        loop {
+            let b = stream.read_byte();
+            if b < 0 {
+                break; // EOF
+            }
+
+            let type_val = (b >> 5) & 0x7;
+            if type_val == 7 {
+                // metadata, e.g. comment or usecmap
+                match b & 0x1f {
+                    0 => {
+                        stream.read_string()?; // skipping comment
+                    }
+                    1 => {
+                        let _use_cmap = stream.read_string()?; // TODO: handle usecmap
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+
+            let sequence = (b & 0x10) != 0;
+            let data_size = (b & 15) as usize;
+
+            if data_size + 1 > MAX_NUM_SIZE {
+                return Err("BinaryCMapReader.process: Invalid dataSize.".to_string());
+            }
+
+            let ucs2_data_size = 1usize;
+            let subitems_count = stream.read_number()? as usize;
+
+            match type_val {
+                0 => {
+                    // codespacerange
+                    stream.read_hex(&mut start, data_size)?;
+                    stream.read_hex_number(&mut end, data_size)?;
+                    add_hex(&mut end, &start, data_size);
+                    cmap.add_codespace_range(
+                        data_size + 1,
+                        hex_to_int(&start, data_size),
+                        hex_to_int(&end, data_size),
+                    );
+                    for _i in 1..subitems_count {
+                        inc_hex(&mut end, data_size);
+                        stream.read_hex_number(&mut start, data_size)?;
+                        add_hex(&mut start, &end, data_size);
+                        stream.read_hex_number(&mut end, data_size)?;
+                        add_hex(&mut end, &start, data_size);
+                        cmap.add_codespace_range(
+                            data_size + 1,
+                            hex_to_int(&start, data_size),
+                            hex_to_int(&end, data_size),
+                        );
+                    }
+                }
+                1 => {
+                    // notdefrange - skip undefined range
+                    stream.read_hex(&mut start, data_size)?;
+                    stream.read_hex_number(&mut end, data_size)?;
+                    add_hex(&mut end, &start, data_size);
+                    stream.read_number()?; // code
+                    for _i in 1..subitems_count {
+                        inc_hex(&mut end, data_size);
+                        stream.read_hex_number(&mut start, data_size)?;
+                        add_hex(&mut start, &end, data_size);
+                        stream.read_hex_number(&mut end, data_size)?;
+                        add_hex(&mut end, &start, data_size);
+                        stream.read_number()?; // code
+                    }
+                }
+                2 => {
+                    // cidchar
+                    stream.read_hex(&mut char, data_size)?;
+                    let mut code = stream.read_number()?;
+                    cmap.map_one(hex_to_int(&char, data_size), code);
+                    for _i in 1..subitems_count {
+                        inc_hex(&mut char, data_size);
+                        if !sequence {
+                            stream.read_hex_number(&mut tmp, data_size)?;
+                            add_hex(&mut char, &tmp, data_size);
+                        }
+                        let delta = stream.read_signed()?;
+                        code = ((code as i64) + (delta as i64) + 1) as u32;
+                        cmap.map_one(hex_to_int(&char, data_size), code);
+                    }
+                }
+                3 => {
+                    // cidrange
+                    stream.read_hex(&mut start, data_size)?;
+                    stream.read_hex_number(&mut end, data_size)?;
+                    add_hex(&mut end, &start, data_size);
+                    let code = stream.read_number()?;
+                    cmap.map_cid_range(
+                        hex_to_int(&start, data_size),
+                        hex_to_int(&end, data_size),
+                        code,
+                    );
+                    for _i in 1..subitems_count {
+                        inc_hex(&mut end, data_size);
+                        if !sequence {
+                            stream.read_hex_number(&mut start, data_size)?;
+                            add_hex(&mut start, &end, data_size);
+                        } else {
+                            start.copy_from_slice(&end);
+                        }
+                        stream.read_hex_number(&mut end, data_size)?;
+                        add_hex(&mut end, &start, data_size);
+                        let code = stream.read_number()?;
+                        cmap.map_cid_range(
+                            hex_to_int(&start, data_size),
+                            hex_to_int(&end, data_size),
+                            code,
+                        );
+                    }
+                }
+                4 => {
+                    // bfchar
+                    stream.read_hex(&mut char, ucs2_data_size)?;
+                    stream.read_hex(&mut char_code, data_size)?;
+                    let src = hex_to_int(&char, ucs2_data_size);
+                    let dst_str = hex_to_str(&char_code, data_size);
+                    cmap.map_one(src, bf_string_char(&dst_str));
+                    for _i in 1..subitems_count {
+                        inc_hex(&mut char, ucs2_data_size);
+                        if !sequence {
+                            stream.read_hex_number(&mut tmp, ucs2_data_size)?;
+                            add_hex(&mut char, &tmp, ucs2_data_size);
+                        }
+                        inc_hex(&mut char_code, data_size);
+                        stream.read_hex_signed(&mut tmp, data_size)?;
+                        add_hex(&mut char_code, &tmp, data_size);
+                        let src = hex_to_int(&char, ucs2_data_size);
+                        let dst_str = hex_to_str(&char_code, data_size);
+                        cmap.map_one(src, bf_string_char(&dst_str));
+                    }
+                }
+                5 => {
+                    // bfrange
+                    stream.read_hex(&mut start, ucs2_data_size)?;
+                    stream.read_hex_number(&mut end, ucs2_data_size)?;
+                    add_hex(&mut end, &start, ucs2_data_size);
+                    stream.read_hex(&mut char_code, data_size)?;
+                    let low = hex_to_int(&start, ucs2_data_size);
+                    let high = hex_to_int(&end, ucs2_data_size);
+                    let dst_low = hex_to_str(&char_code, data_size);
+                    cmap.map_bf_range(low, high, dst_low);
+                    for _i in 1..subitems_count {
+                        inc_hex(&mut end, ucs2_data_size);
+                        if !sequence {
+                            stream.read_hex_number(&mut start, ucs2_data_size)?;
+                            add_hex(&mut start, &end, ucs2_data_size);
+                        } else {
+                            start.copy_from_slice(&end);
+                        }
+                        stream.read_hex_number(&mut end, ucs2_data_size)?;
+                        add_hex(&mut end, &start, ucs2_data_size);
+                        stream.read_hex(&mut char_code, data_size)?;
+                        let low = hex_to_int(&start, ucs2_data_size);
+                        let high = hex_to_int(&end, ucs2_data_size);
+                        let dst_low = hex_to_str(&char_code, data_size);
+                        cmap.map_bf_range(low, high, dst_low);
+                    }
+                }
+                _ => {
+                    return Err(format!(
+                        "BinaryCMapReader.process - unknown type: {}",
+                        type_val
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+pub fn parse_binary_cmap(data: Vec<u8>) -> Option<CMap> {
+    let mut cmap = CMap::new();
+    let reader = BinaryCMapReader::new();
+
+    match reader.process(data, &mut cmap) {
+        Ok(()) => Some(cmap),
+        Err(_) => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -821,5 +1202,152 @@ end"#
         assert_eq!(cmap.lookup_code(0xFF), Some(255));
         assert_eq!(cmap.lookup_code(0x100), None);
         assert_eq!(cmap.name, "Identity-H");
+    }
+
+    #[test]
+    fn test_parse_binary_cmap_adobe_japan1_ucs2() {
+        let data = std::fs::read("assets/bcmaps/Adobe-Japan1-UCS2.bcmap").unwrap();
+        let cmap = parse_binary_cmap(data).unwrap();
+
+        // Test some known mappings from Adobe-Japan1-UCS2
+        // These are sample mappings that should exist in the cmap
+        assert!(cmap.lookup_code(0x20).is_some()); // Space character
+        assert!(cmap.lookup_code(0x21).is_some()); // Exclamation mark
+
+        // Test that the cmap is not empty
+        assert!(cmap.map.len() > 0);
+
+        // Test codespace ranges
+        let test_bytes = [0x00, 0x20];
+        let (charcode, length) = cmap.read_code(&test_bytes, 0);
+        assert_eq!(length, 2);
+        assert_eq!(charcode, 0x0020);
+    }
+
+    #[test]
+    fn test_parse_binary_cmap_adobe_gb1_ucs2() {
+        let data = std::fs::read("assets/bcmaps/Adobe-GB1-UCS2.bcmap").unwrap();
+        let cmap = parse_binary_cmap(data).unwrap();
+
+        // Test some known mappings from Adobe-GB1-UCS2
+        assert!(cmap.lookup_code(0x20).is_some()); // Space character
+        assert!(cmap.lookup_code(0x21).is_some()); // Exclamation mark
+
+        // Test that the cmap is not empty
+        assert!(cmap.map.len() > 0);
+
+        // Test codespace ranges
+        let test_bytes = [0x00, 0x20];
+        let (charcode, length) = cmap.read_code(&test_bytes, 0);
+        assert_eq!(length, 2);
+        assert_eq!(charcode, 0x0020);
+    }
+
+    #[test]
+    fn test_parse_binary_cmap_adobe_korea1_ucs2() {
+        let data = std::fs::read("assets/bcmaps/Adobe-Korea1-UCS2.bcmap").unwrap();
+        let cmap = parse_binary_cmap(data).unwrap();
+
+        // Test some known mappings from Adobe-Korea1-UCS2
+        assert!(cmap.lookup_code(0x20).is_some()); // Space character
+        assert!(cmap.lookup_code(0x21).is_some()); // Exclamation mark
+
+        // Test that the cmap is not empty
+        assert!(cmap.map.len() > 0);
+
+        // Test codespace ranges
+        let test_bytes = [0x00, 0x20];
+        let (charcode, length) = cmap.read_code(&test_bytes, 0);
+        assert_eq!(length, 2);
+        assert_eq!(charcode, 0x0020);
+    }
+
+    #[test]
+    fn test_binary_cmap_stream() {
+        // Test the BinaryCMapStream functionality
+        let data = vec![0x01, 0x80, 0x02, 0x03]; // Sample binary data
+        let mut stream = BinaryCMapStream::new(data);
+
+        assert_eq!(stream.read_byte(), 1);
+        assert_eq!(stream.read_byte(), 128);
+        assert_eq!(stream.read_byte(), 2);
+        assert_eq!(stream.read_byte(), 3);
+        assert_eq!(stream.read_byte(), -1); // EOF
+    }
+
+    #[test]
+    fn test_binary_cmap_number_reading() {
+        // Test reading encoded numbers from binary stream
+        // Single byte number (no continuation bit)
+        let data = vec![0x01];
+        let mut stream = BinaryCMapStream::new(data);
+        let num = stream.read_number().unwrap();
+        assert_eq!(num, 1);
+
+        // Multi-byte number with continuation bit
+        let data2 = vec![0x81, 0x01]; // First byte has continuation bit (0x80), value is (1<<7)|1 = 129
+        let mut stream2 = BinaryCMapStream::new(data2);
+        let num2 = stream2.read_number().unwrap();
+        assert_eq!(num2, 129);
+    }
+
+    #[test]
+    fn bcmap_adobe_gb1_ucs2() {
+        let data = std::fs::read("assets/bcmaps/Adobe-GB1-UCS2.bcmap").unwrap();
+        let cmap = parse_binary_cmap(data).unwrap();
+
+        assert_eq!(cmap.lookup_code(0x3afa), Some(112));
+        assert_eq!(cmap.lookup_code(0x2966), Some(81));
+        assert_eq!(cmap.lookup_code(0x6946), Some(69));
+        assert_eq!(cmap.lookup_code(0x69dc), Some(69));
+        assert_eq!(cmap.lookup_code(0x1793), Some(90));
+    }
+
+    #[test]
+    fn bcmap_adobe_japan1_ucs2() {
+        let data = std::fs::read("assets/bcmaps/Adobe-Japan1-UCS2.bcmap").unwrap();
+        let cmap = parse_binary_cmap(data).unwrap();
+
+        assert_eq!(cmap.lookup_code(0x18ce), Some(65533));
+        assert_eq!(cmap.lookup_code(0x20c3), Some(80));
+        assert_eq!(cmap.lookup_code(0x1f1d), Some(114));
+        assert_eq!(cmap.lookup_code(0x38e7), Some(99));
+        assert_eq!(cmap.lookup_code(0x028b), Some(48));
+    }
+
+    #[test]
+    fn bcmap_adobe_korea1_ucs2() {
+        let data = std::fs::read("assets/bcmaps/Adobe-Korea1-UCS2.bcmap").unwrap();
+        let cmap = parse_binary_cmap(data).unwrap();
+
+        assert_eq!(cmap.lookup_code(0x0b05), Some(65533));
+        assert_eq!(cmap.lookup_code(0x14ea), Some(123));
+        assert_eq!(cmap.lookup_code(0x1ec7), Some(120));
+        assert_eq!(cmap.lookup_code(0x4553), Some(1361));
+        assert_eq!(cmap.lookup_code(0x148b), Some(91));
+    }
+
+    #[test]
+    fn bcmap_78_rksj_h() {
+        let data = std::fs::read("assets/bcmaps/78-RKSJ-H.bcmap").unwrap();
+        let cmap = parse_binary_cmap(data).unwrap();
+
+        assert_eq!(cmap.lookup_code(0x8a6d), Some(1452));
+        assert_eq!(cmap.lookup_code(0x9bc3), Some(4690));
+        assert_eq!(cmap.lookup_code(0x8fd0), Some(2490));
+        assert_eq!(cmap.lookup_code(0x9052), Some(2553));
+        assert_eq!(cmap.lookup_code(0x92f1), Some(3087));
+    }
+
+    #[test]
+    fn bcmap_gb_h() {
+        let data = std::fs::read("assets/bcmaps/GB-H.bcmap").unwrap();
+        let cmap = parse_binary_cmap(data).unwrap();
+
+        assert_eq!(cmap.lookup_code(0x265f), Some(579));
+        assert_eq!(cmap.lookup_code(0x273f), Some(632));
+        assert_eq!(cmap.lookup_code(0x5221), Some(4136));
+        assert_eq!(cmap.lookup_code(0x754b), Some(7463));
+        assert_eq!(cmap.lookup_code(0x3e24), Some(2259));
     }
 }
