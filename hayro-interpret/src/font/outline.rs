@@ -7,6 +7,26 @@ use kurbo::BezPath;
 use skrifa::GlyphId;
 use skrifa::outline::OutlinePen;
 use std::rc::Rc;
+use std::sync::Arc;
+
+/// Font data and metadata for downstream use.
+#[derive(Clone, Debug)]
+pub struct OutlineFontData {
+    /// Raw font bytes (TrueType/OpenType/CFF data).
+    pub data: Arc<Vec<u8>>,
+    /// Cache key for font deduplication.
+    pub cache_key: u128,
+    /// PostScript name (e.g., "TimesNewRomanPS-BoldMT", may include subset prefix).
+    pub postscript_name: Option<String>,
+    /// Font weight (100-900, 400=normal, 700=bold).
+    pub weight: u32,
+    /// Whether the font is italic/oblique.
+    pub is_italic: bool,
+    /// Whether the font is serif (vs sans-serif).
+    pub is_serif: bool,
+    /// Whether the font is monospace.
+    pub is_monospace: bool,
+}
 
 pub(crate) struct OutlinePath(BezPath);
 
@@ -116,6 +136,33 @@ impl OutlineFont {
             Self::Type1(t) => t.char_code_to_unicode(char_code),
             Self::TrueType(t) => t.char_code_to_unicode(char_code),
             Self::Type0(t) => t.char_code_to_unicode(char_code),
+        }
+    }
+
+    /// Get raw font bytes and metadata.
+    /// Allocates a copy of the font data; cache the result if called repeatedly.
+    /// Returns None for Type1 fonts.
+    pub(crate) fn font_data(&self) -> Option<OutlineFontData> {
+        match self {
+            Self::Type1(_) => None,
+            Self::TrueType(t) => Some(OutlineFontData {
+                data: Arc::new(t.font_data().to_vec()),
+                cache_key: t.cache_key(),
+                postscript_name: t.postscript_name().map(|s| s.to_string()),
+                weight: t.weight(),
+                is_italic: t.is_italic(),
+                is_serif: t.is_serif(),
+                is_monospace: t.is_monospace(),
+            }),
+            Self::Type0(t) => Some(OutlineFontData {
+                data: Arc::new(t.font_data().to_vec()),
+                cache_key: t.cache_key(),
+                postscript_name: t.postscript_name().map(|s| s.to_string()),
+                weight: t.weight(),
+                is_italic: t.is_italic(),
+                is_serif: t.is_serif(),
+                is_monospace: t.is_monospace(),
+            }),
         }
     }
 }
