@@ -46,6 +46,7 @@ pub type FontData = Arc<dyn AsRef<[u8]> + Send + Sync>;
 
 use crate::font::cmap::{CMap, parse_cmap};
 use crate::util::hash128;
+pub use outline::OutlineFontData;
 pub use standard_font::StandardFont;
 
 /// A glyph that can be drawn.
@@ -130,6 +131,18 @@ impl OutlineGlyph {
     /// See [`Glyph::as_unicode`] for details on the fallback chain used.
     pub fn as_unicode(&self) -> Option<char> {
         self.font.char_code_to_unicode(self.char_code)
+    }
+
+    /// Get raw font bytes and metadata for downstream use.
+    ///
+    /// Returns `None` for Type1 fonts.
+    pub fn font_data(&self) -> Option<OutlineFontData> {
+        self.font.font_data()
+    }
+
+    /// Get the glyph ID within the font.
+    pub fn glyph_id(&self) -> GlyphId {
+        self.id
     }
 }
 

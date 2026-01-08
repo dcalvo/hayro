@@ -67,6 +67,11 @@ impl CffFontBlob {
         Some(Self(Arc::new(yoke)))
     }
 
+    /// Get the raw font data bytes.
+    pub(crate) fn font_data(&self) -> &[u8] {
+        self.0.backing_cart().as_ref().as_ref()
+    }
+
     pub(crate) fn table(&self) -> &cff::Table<'_> {
         &self.0.as_ref().get().table
     }
@@ -141,6 +146,11 @@ impl OpenTypeFontBlob {
             });
 
         Some(Self(Arc::new(font_ref_yoke)))
+    }
+
+    /// Get the raw font data bytes.
+    pub(crate) fn font_data(&self) -> &[u8] {
+        self.0.backing_cart().as_ref().as_ref()
     }
 
     pub(crate) fn font_ref(&self) -> &FontRef<'_> {
