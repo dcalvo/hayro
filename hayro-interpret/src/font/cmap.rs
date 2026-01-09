@@ -714,6 +714,21 @@ endbfrange"#
     }
 
     #[test]
+    fn test_parse_beginbfrange_with_high_byte_hex_array() {
+        // Test hex strings with bytes >= 0x80
+        // This verifies that chars().count() is needed (not as_bytes().len())
+        // because bytes >= 0x80 become multi-byte UTF-8 sequences
+        let input = r#"1 beginbfrange
+<00B3> <00B3> [<00E9>]
+endbfrange"#
+            .to_string();
+
+        let cmap = parse_cmap(&input).unwrap();
+
+        assert_eq!(cmap.lookup_code(0xB3), Some(0x00E9)); // é (U+00E9)
+    }
+
+    #[test]
     fn test_parse_begincidchar() {
         let input = r#"1 begincidchar
 <14> 0
