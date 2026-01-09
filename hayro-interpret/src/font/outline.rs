@@ -139,6 +139,15 @@ impl OutlineFont {
         }
     }
 
+    /// Get the advance width for a glyph by character code.
+    pub(crate) fn glyph_advance_width(&self, char_code: u32) -> Option<f32> {
+        match self {
+            Self::Type1(t) => t.glyph_width(char_code as u8),
+            Self::TrueType(t) => Some(t.glyph_width(char_code as u8)),
+            Self::Type0(t) => Some(t.code_advance(char_code).x as f32),
+        }
+    }
+
     /// Get raw font bytes and metadata.
     /// Allocates a copy of the font data; cache the result if called repeatedly.
     /// Returns None for Type1 fonts.

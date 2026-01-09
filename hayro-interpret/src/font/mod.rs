@@ -144,6 +144,14 @@ impl OutlineGlyph {
     pub fn glyph_id(&self) -> GlyphId {
         self.id
     }
+
+    /// Get the advance width for this glyph.
+    ///
+    /// The advance width is how far to move horizontally after drawing
+    /// this glyph before drawing the next one.
+    pub fn advance_width(&self) -> Option<f32> {
+        self.font.glyph_advance_width(self.char_code)
+    }
 }
 
 /// A type3 glyph.
