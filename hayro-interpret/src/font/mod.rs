@@ -152,6 +152,14 @@ impl OutlineGlyph {
     pub fn advance_width(&self) -> Option<f32> {
         self.font.glyph_advance_width(self.char_code)
     }
+
+    /// Get the cache key for this glyph's font.
+    ///
+    /// This identifies the font uniquely, even when `font_data()` returns `None`
+    /// (e.g., for Type1 fonts). Useful for grouping glyphs by font.
+    pub fn font_cache_key(&self) -> u128 {
+        self.font.cache_key()
+    }
 }
 
 /// A type3 glyph.
