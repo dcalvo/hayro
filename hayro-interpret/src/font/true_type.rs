@@ -103,7 +103,7 @@ impl TrueTypeFont {
         self.base_font.font_data()
     }
 
-    /// Get the PostScript name (subset prefix stripped).
+    /// Get the PostScript name.
     pub(crate) fn postscript_name(&self) -> Option<&str> {
         self.postscript_name.as_deref()
     }
