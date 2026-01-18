@@ -2,7 +2,10 @@ use crate::CacheKey;
 use crate::font::blob::{CffFontBlob, OpenTypeFontBlob};
 use crate::font::cmap::CMap;
 use crate::font::generated::{glyph_names, mac_os_roman, mac_roman};
-use crate::font::{Encoding, FontFlags, glyph_name_to_unicode, read_to_unicode, unicode_from_name};
+use crate::font::{
+    Encoding, FontFlags, glyph_name_to_unicode, read_to_unicode, strip_subset_prefix,
+    unicode_from_name,
+};
 use crate::util::OptionLog;
 use hayro_syntax::object::Array;
 use hayro_syntax::object::Dict;
@@ -35,7 +38,7 @@ pub(crate) struct TrueTypeFont {
     differences: HashMap<u8, String>,
     cached_mappings: RefCell<HashMap<u8, GlyphId>>,
     to_unicode: Option<CMap>,
-    /// PostScript name from the PDF (may include subset prefix).
+    /// PostScript name from the PDF (subset prefix stripped).
     postscript_name: Option<String>,
 }
 
@@ -73,10 +76,9 @@ impl TrueTypeFont {
 
         let to_unicode = read_to_unicode(dict);
 
-        // Extract PostScript name from PDF dict (BASE_FONT key)
         let postscript_name = dict
             .get::<Name<'_>>(BASE_FONT)
-            .map(|n| n.as_str().to_string());
+            .map(|n| strip_subset_prefix(n.as_str()).to_string());
 
         Some(Self {
             base_font,
@@ -97,31 +99,27 @@ impl TrueTypeFont {
         self.base_font.outline_glyph(glyph)
     }
 
-    /// Get the raw font data bytes.
-    pub(crate) fn font_data(&self) -> &[u8] {
-        self.base_font.font_data()
+    pub(crate) fn font_data_arc(&self) -> crate::font::FontData {
+        self.base_font.font_data_arc()
     }
 
-    /// Get the PostScript name (may include subset prefix like "ABCDEF+").
+    /// Get the PostScript name (subset prefix stripped).
     pub(crate) fn postscript_name(&self) -> Option<&str> {
         self.postscript_name.as_deref()
     }
 
     /// Get the font weight (100-900, 400=normal, 700=bold).
-    pub(crate) fn weight(&self) -> u32 {
-        // Try to get from skrifa's font attributes
-        let skrifa_weight = self
+    ///
+    /// Returns `None` if weight cannot be determined (invalid weight).
+    pub(crate) fn weight(&self) -> Option<u32> {
+        let weight = self
             .base_font
             .font_ref()
             .attributes()
             .weight
             .value()
             .round() as u32;
-        if skrifa_weight > 0 {
-            return skrifa_weight;
-        }
-        // Default to normal weight
-        400
+        if weight > 0 { Some(weight) } else { None }
     }
 
     /// Check if font is italic based on font flags or font attributes.

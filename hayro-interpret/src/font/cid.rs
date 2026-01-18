@@ -1,7 +1,7 @@
 use crate::CacheKey;
 use crate::font::blob::{CffFontBlob, OpenTypeFontBlob};
 use crate::font::cmap::{CMap, parse_cmap};
-use crate::font::{FontFlags, read_to_unicode};
+use crate::font::{FontFlags, read_to_unicode, strip_subset_prefix};
 use hayro_syntax::object::Dict;
 use hayro_syntax::object::Name;
 use hayro_syntax::object::Stream;
@@ -28,7 +28,7 @@ pub(crate) struct Type0Font {
     to_unicode: Option<CMap>,
     widths2: HashMap<u32, [f32; 3]>,
     cid_to_gid_map: CidToGIdMap,
-    /// PostScript name from the PDF (may include subset prefix).
+    /// PostScript name from the PDF (subset prefix stripped).
     postscript_name: Option<String>,
     /// Font flags from the font descriptor.
     font_flags: Option<FontFlags>,
@@ -66,10 +66,9 @@ impl Type0Font {
 
         let to_unicode = read_to_unicode(dict);
 
-        // Extract PostScript name from PDF dict (BASE_FONT key)
         let postscript_name = dict
             .get::<Name<'_>>(BASE_FONT)
-            .map(|n| n.as_str().to_string());
+            .map(|n| strip_subset_prefix(n.as_str()).to_string());
 
         // Extract font flags from descriptor
         let font_flags = font_descriptor
@@ -125,27 +124,28 @@ impl Type0Font {
         }
     }
 
-    /// Get the raw font data bytes.
-    pub(crate) fn font_data(&self) -> &[u8] {
+    pub(crate) fn font_data_arc(&self) -> crate::font::FontData {
         match &self.font_type {
-            FontType::TrueType(t) => t.font_data(),
-            FontType::Cff(c) => c.font_data(),
+            FontType::TrueType(t) => t.font_data_arc(),
+            FontType::Cff(c) => c.font_data_arc(),
         }
     }
 
-    /// Get the PostScript name (may include subset prefix like "ABCDEF+").
+    /// Get the PostScript name (subset prefix stripped).
     pub(crate) fn postscript_name(&self) -> Option<&str> {
         self.postscript_name.as_deref()
     }
 
     /// Get the font weight (100-900, 400=normal, 700=bold).
-    pub(crate) fn weight(&self) -> u32 {
+    ///
+    /// Returns `None` if weight cannot be determined (CFF fonts or invalid weight).
+    pub(crate) fn weight(&self) -> Option<u32> {
         match &self.font_type {
             FontType::TrueType(t) => {
                 let weight = t.font_ref().attributes().weight.value().round() as u32;
-                if weight > 0 { weight } else { 400 }
+                if weight > 0 { Some(weight) } else { None }
             }
-            FontType::Cff(_) => 400, // CFF doesn't easily expose weight
+            FontType::Cff(_) => None,
         }
     }
 

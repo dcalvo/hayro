@@ -44,6 +44,23 @@ pub(crate) const UNITS_PER_EM: f32 = 1000.0;
 /// A container for the bytes of a PDF file.
 pub type FontData = Arc<dyn AsRef<[u8]> + Send + Sync>;
 
+/// Strip the 6-character subset prefix from a PostScript font name.
+///
+/// PDF subset fonts use names like "ABCDEF+TimesNewRoman". This function
+/// returns `TimesNewRoman` from such a name, or the original name if no
+/// valid prefix is found.
+pub(crate) fn strip_subset_prefix(name: &str) -> &str {
+    match name.split_once('+') {
+        Some((prefix, rest)) if prefix.len() == 6 => {
+            if !prefix.bytes().all(|b| b.is_ascii_uppercase()) {
+                warn!("non-standard subset prefix: {prefix}+");
+            }
+            rest
+        }
+        _ => name,
+    }
+}
+
 use crate::font::cmap::{CMap, parse_cmap};
 use crate::util::hash128;
 pub use outline::OutlineFontData;
@@ -492,24 +509,19 @@ pub struct FallbackFontQuery {
 
 impl FallbackFontQuery {
     pub(crate) fn new(dict: &Dict<'_>) -> Self {
-        let mut data = Self::default();
-
-        let remove_subset_prefix = |s: String| {
-            if s.contains("+") {
-                s.chars().skip(7).collect()
-            } else {
-                s
-            }
-        };
-
-        data.post_script_name = dict
+        let post_script_name = dict
             .get::<Name<'_>>(BASE_FONT)
-            .map(|n| remove_subset_prefix(n.as_str().to_string()));
+            .map(|n| strip_subset_prefix(n.as_str()).to_string());
+
+        let mut data = Self {
+            post_script_name,
+            ..Default::default()
+        };
 
         if let Some(descriptor) = dict.get::<Dict<'_>>(FONT_DESC) {
             data.font_name = dict
                 .get::<Name<'_>>(FONT_NAME)
-                .map(|n| remove_subset_prefix(n.as_str().to_string()));
+                .map(|n| strip_subset_prefix(n.as_str()).to_string());
             data.font_family = descriptor
                 .get::<Name<'_>>(FONT_FAMILY)
                 .map(|n| n.as_str().to_string());
