@@ -124,7 +124,7 @@ impl Type0Font {
         }
     }
 
-    pub(crate) fn font_data_arc(&self) -> crate::font::FontData {
+    pub(crate) fn font_data(&self) -> crate::font::FontData {
         match &self.font_type {
             FontType::TrueType(t) => t.font_data(),
             FontType::Cff(c) => c.font_data(),

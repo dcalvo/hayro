@@ -99,7 +99,7 @@ impl TrueTypeFont {
         self.base_font.outline_glyph(glyph)
     }
 
-    pub(crate) fn font_data_arc(&self) -> crate::font::FontData {
+    pub(crate) fn font_data(&self) -> crate::font::FontData {
         self.base_font.font_data()
     }
 
