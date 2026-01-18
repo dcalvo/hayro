@@ -38,7 +38,7 @@ pub(crate) struct TrueTypeFont {
     differences: HashMap<u8, String>,
     cached_mappings: RefCell<HashMap<u8, GlyphId>>,
     to_unicode: Option<CMap>,
-    /// PostScript name from the PDF (subset prefix stripped).
+    /// PostScript name from the PDF.
     postscript_name: Option<String>,
 }
 
@@ -100,7 +100,7 @@ impl TrueTypeFont {
     }
 
     pub(crate) fn font_data_arc(&self) -> crate::font::FontData {
-        self.base_font.font_data_arc()
+        self.base_font.font_data()
     }
 
     /// Get the PostScript name (subset prefix stripped).

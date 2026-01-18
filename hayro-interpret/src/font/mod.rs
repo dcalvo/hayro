@@ -51,12 +51,7 @@ pub type FontData = Arc<dyn AsRef<[u8]> + Send + Sync>;
 /// valid prefix is found.
 pub(crate) fn strip_subset_prefix(name: &str) -> &str {
     match name.split_once('+') {
-        Some((prefix, rest)) if prefix.len() == 6 => {
-            if !prefix.bytes().all(|b| b.is_ascii_uppercase()) {
-                warn!("non-standard subset prefix: {prefix}+");
-            }
-            rest
-        }
+        Some((prefix, rest)) if prefix.len() == 6 => rest,
         _ => name,
     }
 }

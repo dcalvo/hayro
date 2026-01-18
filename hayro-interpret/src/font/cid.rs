@@ -28,7 +28,7 @@ pub(crate) struct Type0Font {
     to_unicode: Option<CMap>,
     widths2: HashMap<u32, [f32; 3]>,
     cid_to_gid_map: CidToGIdMap,
-    /// PostScript name from the PDF (subset prefix stripped).
+    /// PostScript name from the PDF.
     postscript_name: Option<String>,
     /// Font flags from the font descriptor.
     font_flags: Option<FontFlags>,
@@ -126,8 +126,8 @@ impl Type0Font {
 
     pub(crate) fn font_data_arc(&self) -> crate::font::FontData {
         match &self.font_type {
-            FontType::TrueType(t) => t.font_data_arc(),
-            FontType::Cff(c) => c.font_data_arc(),
+            FontType::TrueType(t) => t.font_data(),
+            FontType::Cff(c) => c.font_data(),
         }
     }
 
