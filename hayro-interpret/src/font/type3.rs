@@ -89,12 +89,12 @@ impl<'a> Type3<'a> {
             * UNITS_PER_EM
     }
 
-    pub(crate) fn char_code_to_unicode(&self, char_code: u32) -> Option<char> {
+    pub(crate) fn char_code_to_unicode(&self, char_code: u32) -> Option<String> {
         // Type3 fonts can only provide Unicode via ToUnicode CMap.
         if let Some(to_unicode) = &self.to_unicode
             && let Some(unicode) = to_unicode.lookup_code(char_code)
         {
-            return char::from_u32(unicode);
+            return Some(unicode);
         }
 
         None

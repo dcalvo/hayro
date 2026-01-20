@@ -70,10 +70,13 @@ pub enum Glyph<'a> {
 }
 
 impl Glyph<'_> {
-    /// Returns the Unicode code point for this glyph, if available.
+    /// Returns the Unicode text for this glyph, if available.
     ///
-    /// This method attempts to determine the Unicode character that this glyph
-    /// represents. The exact fallback chain depends on the font type:
+    /// This method attempts to determine the Unicode text that this glyph
+    /// represents. For most glyphs, this is a single character, but for
+    /// ligatures it may be multiple characters (e.g., "fi", "ffi", "ti").
+    ///
+    /// The exact fallback chain depends on the font type:
     ///
     /// **For Outline Fonts (Type1, TrueType, CFF):**
     /// 1. `ToUnicode` `CMap`
@@ -91,7 +94,7 @@ impl Glyph<'_> {
     ///
     /// Please note that this method is still somewhat experimental and might
     /// not work reliably in all cases.
-    pub fn as_unicode(&self) -> Option<char> {
+    pub fn as_unicode(&self) -> Option<String> {
         match self {
             Glyph::Outline(g) => g.as_unicode(),
             Glyph::Type3(g) => g.as_unicode(),
@@ -138,10 +141,13 @@ impl OutlineGlyph {
         }
     }
 
-    /// Returns the Unicode code point for this glyph, if available.
+    /// Returns the Unicode text for this glyph, if available.
+    ///
+    /// For most glyphs this is a single character, but for ligatures
+    /// it may be multiple characters (e.g., "fi", "ffi", "ti").
     ///
     /// See [`Glyph::as_unicode`] for details on the fallback chain used.
-    pub fn as_unicode(&self) -> Option<char> {
+    pub fn as_unicode(&self) -> Option<String> {
         self.font.char_code_to_unicode(self.char_code)
     }
 
@@ -201,10 +207,10 @@ impl<'a> Type3Glyph<'a> {
             .render_glyph(self, transform, glyph_transform, paint, device);
     }
 
-    /// Returns the Unicode code point for this glyph, if available.
+    /// Returns the Unicode text for this glyph, if available.
     ///
     /// Note: Type3 fonts can only provide Unicode via `ToUnicode` `CMap`.
-    pub fn as_unicode(&self) -> Option<char> {
+    pub fn as_unicode(&self) -> Option<String> {
         self.font.char_code_to_unicode(self.char_code)
     }
 }

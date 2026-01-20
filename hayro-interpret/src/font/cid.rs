@@ -114,7 +114,7 @@ impl Type0Font {
     }
 
     fn code_to_cid(&self, code: u32) -> Option<u32> {
-        self.encoding.lookup_code(code)
+        self.encoding.lookup_cid(code)
     }
 
     pub(crate) fn outline_glyph(&self, glyph: GlyphId) -> BezPath {
@@ -224,11 +224,11 @@ impl Type0Font {
         }
     }
 
-    pub(crate) fn char_code_to_unicode(&self, code: u32) -> Option<char> {
+    pub(crate) fn char_code_to_unicode(&self, code: u32) -> Option<String> {
         if let Some(to_unicode) = &self.to_unicode
             && let Some(unicode) = to_unicode.lookup_code(code)
         {
-            return char::from_u32(unicode);
+            return Some(unicode);
         }
 
         // TODO: Implement CID collection mappings (Adobe-Japan1, Adobe-GB1, etc.).

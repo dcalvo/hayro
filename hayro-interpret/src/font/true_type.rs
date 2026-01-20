@@ -278,14 +278,15 @@ impl TrueTypeFont {
             .unwrap_or(0.0)
     }
 
-    pub(crate) fn char_code_to_unicode(&self, code: u32) -> Option<char> {
+    pub(crate) fn char_code_to_unicode(&self, code: u32) -> Option<String> {
         if let Some(to_unicode) = &self.to_unicode
             && let Some(unicode) = to_unicode.lookup_code(code)
         {
-            char::from_u32(unicode)
+            Some(unicode)
         } else {
             self.code_to_name(code as u8)
                 .and_then(glyph_name_to_unicode)
+                .map(|c| c.to_string())
         }
 
         // TODO: The test PDFs below fail (but mutool can render them correctly).

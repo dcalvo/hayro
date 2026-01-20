@@ -130,7 +130,7 @@ impl OutlineFont {
         }
     }
 
-    pub(crate) fn char_code_to_unicode(&self, char_code: u32) -> Option<char> {
+    pub(crate) fn char_code_to_unicode(&self, char_code: u32) -> Option<String> {
         match self {
             Self::Type1(t) => t.char_code_to_unicode(char_code),
             Self::TrueType(t) => t.char_code_to_unicode(char_code),
