@@ -103,6 +103,10 @@ impl TrueTypeFont {
         }
     }
 
+    pub(crate) fn is_embedded(&self) -> bool {
+        matches!(self.kind, Kind::Embedded(_))
+    }
+
     pub(crate) fn postscript_name(&self) -> Option<&str> {
         match &self.kind {
             Kind::Embedded(e) => e.postscript_name.as_deref(),

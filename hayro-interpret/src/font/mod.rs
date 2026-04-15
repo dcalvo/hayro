@@ -185,6 +185,14 @@ impl OutlineGlyph {
     pub fn font_kind(&self) -> FontKind {
         self.font.font_kind()
     }
+
+    /// Whether the backing font is embedded in the PDF.
+    ///
+    /// Returns `false` when the font was substituted at load time (the
+    /// glyph outlines come from a fallback font, not the original).
+    pub fn is_embedded(&self) -> bool {
+        self.font.is_embedded()
+    }
 }
 
 /// A type3 glyph.
