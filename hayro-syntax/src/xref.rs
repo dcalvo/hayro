@@ -1,6 +1,6 @@
 //! Reading and querying the xref table of a PDF file.
 
-use crate::crypto::{DecryptionError, DecryptionTarget, Decryptor, get};
+use crate::crypto::{DecryptionError, DecryptionTarget, Decryptor, EncryptionType, get};
 use crate::data::Data;
 use crate::metadata::Metadata;
 use crate::object::Name;
@@ -426,6 +426,19 @@ impl XRef {
         match &self.0 {
             Inner::Dummy => false,
             Inner::Some(r) => r.has_ocgs,
+        }
+    }
+
+    /// Returns the type of encryption used by this PDF, or
+    /// [`EncryptionType::None`] if the file is not encrypted.
+    ///
+    /// Note that this reflects the encryption of a PDF that was
+    /// *successfully opened*. Files that failed to open due to
+    /// password protection never reach this getter.
+    pub fn encryption_type(&self) -> EncryptionType {
+        match &self.0 {
+            Inner::Dummy => EncryptionType::None,
+            Inner::Some(r) => r.decryptor.encryption_type(),
         }
     }
 

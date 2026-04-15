@@ -65,6 +65,19 @@ impl DecryptorTag {
         }
     }
 }
+/// Classification of the encryption algorithm used by a PDF.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum EncryptionType {
+    /// The PDF is not encrypted.
+    None,
+    /// RC4 encryption (PDF encryption /V 1 or 2).
+    Rc4,
+    /// AES-128 encryption (PDF encryption /V 4).
+    Aes128,
+    /// AES-256 encryption (PDF encryption /V 5 or 6).
+    Aes256,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum Decryptor {
     None,
@@ -80,6 +93,15 @@ pub(crate) enum DecryptionTarget {
 }
 
 impl Decryptor {
+    pub(crate) fn encryption_type(&self) -> EncryptionType {
+        match self {
+            Self::None => EncryptionType::None,
+            Self::Rc4 { .. } => EncryptionType::Rc4,
+            Self::Aes128 { .. } => EncryptionType::Aes128,
+            Self::Aes256 { .. } => EncryptionType::Aes256,
+        }
+    }
+
     pub(crate) fn decrypt(
         &self,
         id: ObjectIdentifier,

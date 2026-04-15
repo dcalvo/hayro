@@ -8,7 +8,7 @@ use crate::reader::Reader;
 use crate::sync::Arc;
 use crate::xref::{XRef, XRefError, fallback, root_xref};
 
-pub use crate::crypto::DecryptionError;
+pub use crate::crypto::{DecryptionError, EncryptionType};
 use crate::metadata::Metadata;
 
 /// A PDF file.
