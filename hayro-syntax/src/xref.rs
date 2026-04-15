@@ -41,7 +41,7 @@ pub(crate) enum XRefError {
 pub(crate) fn root_xref(data: PdfData, password: &[u8]) -> Result<XRef, XRefError> {
     let mut xref_map = FxHashMap::default();
     let xref_pos = find_last_xref_pos(data.as_ref()).ok_or(XRefError::Unknown)?;
-    let trailer =
+    let (trailer, xref_chain_depth) =
         populate_xref_impl(data.as_ref(), xref_pos, &mut xref_map).ok_or(XRefError::Unknown)?;
 
     XRef::new(
@@ -50,6 +50,7 @@ pub(crate) fn root_xref(data: PdfData, password: &[u8]) -> Result<XRef, XRefErro
         XRefInput::TrailerDictData(trailer),
         false,
         password,
+        xref_chain_depth,
     )
 }
 
@@ -61,7 +62,8 @@ pub(crate) fn fallback(data: PdfData, password: &[u8]) -> Option<XRef> {
     if let Some(xref_input) = xref_input {
         warn!("rebuild xref table with {} entries", xref_map.len());
 
-        XRef::new(data.clone(), xref_map, xref_input, true, password).ok()
+        // The xref PREV chain is not meaningful after a repair; report 0.
+        XRef::new(data.clone(), xref_map, xref_input, true, password, 0).ok()
     } else {
         warn!("couldn't find trailer dictionary, failed to rebuild xref table");
 
@@ -248,6 +250,7 @@ fn fallback_xref_map_inner<'a>(
             XRefInput::TrailerDictData(trailer_dict.as_ref().map(|d| d.data()).unwrap()),
             true,
             password,
+            0,
         ) {
             let ctx = ReaderContext::new(&xref, false);
             let (patched_map, _) = fallback_xref_map_inner(data, ctx, false, password);
@@ -280,6 +283,7 @@ impl XRef {
         input: XRefInput<'_>,
         repaired: bool,
         password: &[u8],
+        xref_chain_depth: usize,
     ) -> Result<Self, XRefError> {
         // This is a bit hacky, but the problem is we can't read the resolved trailer dictionary
         // before we actually created the xref struct. So we first create it using dummy data
@@ -294,6 +298,7 @@ impl XRef {
             metadata: Arc::new(Metadata::default()),
             trailer_data,
             password: password.to_vec(),
+            xref_chain_depth,
         })));
 
         // We read the trailer twice, once to determine the encryption used and then a second
@@ -439,6 +444,20 @@ impl XRef {
         match &self.0 {
             Inner::Dummy => EncryptionType::None,
             Inner::Some(r) => r.decryptor.encryption_type(),
+        }
+    }
+
+    /// Returns the number of xref sections walked via `/Prev`
+    /// (and `XRefStm`) links when loading the xref table.
+    ///
+    /// A value of 1 indicates a single xref section with no incremental
+    /// updates; N indicates N−1 incremental updates. Returns 0 when the
+    /// xref was rebuilt via the repair path (i.e. the PREV chain is
+    /// not meaningful).
+    pub fn xref_chain_depth(&self) -> usize {
+        match &self.0 {
+            Inner::Dummy => 0,
+            Inner::Some(r) => r.xref_chain_depth,
         }
     }
 
@@ -696,6 +715,11 @@ struct SomeRepr {
     has_ocgs: bool,
     password: Vec<u8>,
     trailer_data: TrailerData,
+    /// Number of xref sections walked via `/Prev` (and `XRefStm`) links
+    /// when loading the xref table. A value of 1 means a single xref
+    /// section (no incremental updates); N means N−1 incremental updates.
+    /// Zero when the xref was rebuilt via the repair path.
+    xref_chain_depth: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -744,9 +768,14 @@ impl XRefEntry {
     }
 }
 
-fn populate_xref_impl<'a>(data: &'a [u8], pos: usize, xref_map: &mut XrefMap) -> Option<&'a [u8]> {
+fn populate_xref_impl<'a>(
+    data: &'a [u8],
+    pos: usize,
+    xref_map: &mut XrefMap,
+) -> Option<(&'a [u8], usize)> {
     let mut visited = BTreeSet::new();
-    populate_xref_impl_inner(data, pos, xref_map, &mut visited)
+    let trailer = populate_xref_impl_inner(data, pos, xref_map, &mut visited)?;
+    Some((trailer, visited.len()))
 }
 
 /// Maximum number of allowed xref `Prev` pointers before we abort.
@@ -1151,6 +1180,8 @@ mod tests {
         let mut xref_map = FxHashMap::default();
         let xref_pos = find_last_xref_pos(pdf.as_ref()).unwrap();
         let _result = populate_xref_impl(pdf.as_ref(), xref_pos, &mut xref_map);
+        // Result is Option<(&[u8], usize)>; don't care about the depth
+        // here — we just want to confirm the cycle detector bails out.
     }
 
     #[test]
