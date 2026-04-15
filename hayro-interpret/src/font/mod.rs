@@ -66,7 +66,7 @@ pub(crate) fn strip_subset_prefix(name: &str) -> &str {
 
 use crate::util::hash128;
 use hayro_cmap::{BfString, CMap, CMapName, CharacterCollection};
-pub use outline::OutlineFontData;
+pub use outline::{FontKind, OutlineFontData};
 pub use standard_font::StandardFont;
 
 /// A glyph that can be drawn.
@@ -179,6 +179,11 @@ impl OutlineGlyph {
     /// (e.g., for Type1 fonts). Useful for grouping glyphs by font.
     pub fn font_cache_key(&self) -> u128 {
         self.font.cache_key()
+    }
+
+    /// Returns the top-level classification of the font backing this glyph.
+    pub fn font_kind(&self) -> FontKind {
+        self.font.font_kind()
     }
 }
 
