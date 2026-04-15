@@ -1,10 +1,13 @@
 //! The starting point for reading PDF files.
 
 use crate::PdfData;
+use crate::object::Dict;
 use crate::object::Object;
+use crate::object::dict::keys::LINEARIZED;
+use crate::object::indirect::IndirectObject;
 use crate::page::Pages;
 use crate::page::cached::CachedPages;
-use crate::reader::Reader;
+use crate::reader::{Reader, ReaderContext, ReaderExt};
 use crate::sync::Arc;
 use crate::xref::{XRef, XRefError, fallback, root_xref};
 
@@ -105,6 +108,50 @@ impl Pdf {
     pub fn metadata(&self) -> &Metadata {
         self.xref.metadata()
     }
+
+    /// Whether this PDF is linearized.
+    ///
+    /// A linearized PDF has a linearization parameter dictionary as its
+    /// first body object, immediately following the header. This method
+    /// scans for that first object and checks it for the
+    /// `/Linearized` key. Returns `false` if no such object is found or
+    /// if the first body object is not a linearization dict.
+    pub fn is_linearized(&self) -> bool {
+        let data = self.data.as_ref();
+        let Some(start) = find_first_body_offset(data) else {
+            return false;
+        };
+
+        let mut r = Reader::new(data);
+        r.jump(start);
+        r.skip_white_spaces_and_comments();
+
+        let ctx = ReaderContext::dummy();
+        let Some(obj) = r.read_with_context::<IndirectObject<Dict<'_>>>(&ctx) else {
+            return false;
+        };
+
+        obj.get().contains_key(LINEARIZED)
+    }
+}
+
+fn find_first_body_offset(data: &[u8]) -> Option<usize> {
+    let window = &data[..data.len().min(2000)];
+    let mut r = Reader::new(window);
+
+    while r.forward_tag(b"%PDF-").is_none() {
+        r.read_byte()?;
+    }
+
+    // Skip the rest of the `%PDF-X.Y` line.
+    while let Some(b) = r.peek_byte() {
+        r.read_byte()?;
+        if b == b'\n' {
+            break;
+        }
+    }
+
+    Some(r.offset())
 }
 
 fn find_version(data: &[u8]) -> Option<PdfVersion> {
