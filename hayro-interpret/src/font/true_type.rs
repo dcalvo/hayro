@@ -29,6 +29,7 @@ pub(crate) struct TrueTypeFont {
     cache_key: u128,
     kind: Kind,
     to_unicode: Option<CMap>,
+    base_font_name: Option<String>,
 }
 
 #[derive(Debug)]
@@ -45,12 +46,16 @@ impl TrueTypeFont {
     ) -> Option<Self> {
         let cache_key = dict.cache_key();
         let to_unicode = read_to_unicode(dict, cmap_resolver);
+        let base_font_name = dict
+            .get::<Name<'_>>(BASE_FONT)
+            .map(|n| strip_subset_prefix(n.as_str()).to_string());
 
         if let Some(embedded) = EmbeddedKind::new(dict) {
             return Some(Self {
                 cache_key,
                 kind: Kind::Embedded(embedded),
                 to_unicode,
+                base_font_name,
             });
         }
 
@@ -75,6 +80,7 @@ impl TrueTypeFont {
                     font_resolver,
                 )?),
                 to_unicode: to_unicode.clone(),
+                base_font_name: base_font_name.clone(),
             })
         };
 
@@ -83,6 +89,7 @@ impl TrueTypeFont {
                 cache_key,
                 kind: Kind::Standard(standard),
                 to_unicode,
+                base_font_name,
             })
         } else {
             fallback()
@@ -110,7 +117,7 @@ impl TrueTypeFont {
     pub(crate) fn postscript_name(&self) -> Option<&str> {
         match &self.kind {
             Kind::Embedded(e) => e.postscript_name.as_deref(),
-            Kind::Standard(_) => None,
+            Kind::Standard(_) => self.base_font_name.as_deref(),
         }
     }
 

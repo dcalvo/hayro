@@ -119,6 +119,14 @@ impl OutlineFont {
         }
     }
 
+    pub(crate) fn postscript_name(&self) -> Option<&str> {
+        match self {
+            Self::Type1(_) => None,
+            Self::TrueType(t) => t.postscript_name(),
+            Self::Type0(t) => t.postscript_name(),
+        }
+    }
+
     pub(crate) fn outline_glyph(&self, glyph: GlyphId, code: u32) -> BezPath {
         match self {
             Self::Type1(t) => t.outline_glyph(glyph),

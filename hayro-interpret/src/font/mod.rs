@@ -193,6 +193,14 @@ impl OutlineGlyph {
     pub fn is_embedded(&self) -> bool {
         self.font.is_embedded()
     }
+
+    /// Returns the PostScript name of the backing font, if known.
+    ///
+    /// Available for TrueType and Type0/CID fonts (from the PDF `/BaseFont`
+    /// entry). Returns `None` for Type1 fonts.
+    pub fn postscript_name(&self) -> Option<&str> {
+        self.font.postscript_name()
+    }
 }
 
 /// A type3 glyph.
