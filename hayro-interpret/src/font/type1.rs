@@ -73,6 +73,10 @@ impl Type1Font {
         Some(inner)
     }
 
+    pub(crate) fn is_embedded(&self) -> bool {
+        matches!(self.1, Kind::Type1(_) | Kind::Cff(_))
+    }
+
     pub(crate) fn new_standard(font: StandardFont, resolver: &FontResolverFn) -> Option<Self> {
         let dict = Dict::default();
         let standard = StandardKind::new_with_standard(&dict, font, true, resolver)?;

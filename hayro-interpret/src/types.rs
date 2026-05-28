@@ -46,6 +46,19 @@ impl<'a, 'b> StencilImage<'a, 'b> {
         }
     }
 
+    /// Return the underlying stream object.
+    ///
+    /// This gives access to the raw encoded image-mask data without decoding,
+    /// mirroring [`RasterImage::stream`].
+    pub fn stream(&self) -> &Stream<'_> {
+        self.image_xobject.stream()
+    }
+
+    /// The paint the stencil is filled with, without decoding the mask.
+    pub fn paint(&self) -> &Paint<'a> {
+        &self.paint
+    }
+
     // These are hidden since clients are supposed to call get the
     // width/height from `LumaData` instead.
     #[doc(hidden)]
