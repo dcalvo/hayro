@@ -116,6 +116,15 @@ impl RasterImage<'_> {
         self.0.color_space.as_ref()
     }
 
+    /// Return whether a transfer function from the graphics state is applied
+    /// to the image's samples during decoding.
+    ///
+    /// If `true`, the decoded samples differ from the raw encoded data in
+    /// [`stream`](Self::stream).
+    pub fn has_transfer_function(&self) -> bool {
+        self.0.transfer_function.is_some()
+    }
+
     // These are hidden since clients are supposed to call get the
     // width/height from `LumaData` instead.
     #[doc(hidden)]
