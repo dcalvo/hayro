@@ -270,6 +270,32 @@ impl<'a> Type3Glyph<'a> {
     pub fn as_unicode(&self) -> Option<BfString> {
         self.font.char_code_to_unicode(self.char_code)
     }
+
+    /// Get the glyph ID within the font.
+    pub fn glyph_id(&self) -> GlyphId {
+        self.glyph_id
+    }
+
+    /// Get a cache key that uniquely identifies the backing Type3 font.
+    ///
+    /// Useful for grouping glyphs by font.
+    pub fn font_cache_key(&self) -> u128 {
+        self.font.cache_key()
+    }
+
+    /// Get the advance width of the glyph.
+    ///
+    /// The advance is expressed in the same em-normalized units as
+    /// [`OutlineGlyph::advance_width`] (`/Widths[code] * FontMatrix[0] *
+    /// units-per-em`).
+    pub fn advance_width(&self) -> f32 {
+        self.font.glyph_width(self.char_code as u8)
+    }
+
+    /// Get the font's `/FontMatrix`.
+    pub fn font_matrix(&self) -> Affine {
+        self.font.matrix()
+    }
 }
 
 impl CacheKey for Type3Glyph<'_> {

@@ -95,6 +95,10 @@ impl<'a> Type3<'a> {
         (w * self.matrix.as_coeffs()[0] as f32) * UNITS_PER_EM
     }
 
+    pub(crate) fn matrix(&self) -> Affine {
+        self.matrix
+    }
+
     pub(crate) fn char_code_to_unicode(&self, char_code: u32) -> Option<BfString> {
         // Type3 fonts can only provide Unicode via ToUnicode CMap.
         self.to_unicode
