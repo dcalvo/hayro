@@ -10,6 +10,7 @@ struct ICCColorRepr {
     number_components: usize,
     is_srgb: bool,
     is_lab: bool,
+    raw_data: Option<Vec<u8>>,
     src_profile: Option<ColorProfile>,
     src_layout: Layout,
     transform_u8: OnceLock<Option<Arc<Transform8BitExecutor>>>,
@@ -36,13 +37,19 @@ impl ICCProfile {
             .get(52..56)
             .map(|device_model| device_model == SRGB_MARKER)
             .unwrap_or(false);
-        Self::new_from_src_profile(src_profile, is_srgb, number_components)
+        Self::new_from_src_profile(
+            src_profile,
+            is_srgb,
+            number_components,
+            Some(profile.to_vec()),
+        )
     }
 
     pub(super) fn new_from_src_profile(
         src_profile: ColorProfile,
         is_srgb: bool,
         number_components: usize,
+        raw_data: Option<Vec<u8>>,
     ) -> Option<Self> {
         let is_lab = src_profile.color_space == DataColorSpace::Lab;
         let src_layout = match number_components {
@@ -99,6 +106,7 @@ impl ICCProfile {
             number_components,
             is_srgb,
             is_lab,
+            raw_data,
             src_profile,
             src_layout,
             transform_u8,
@@ -117,6 +125,10 @@ impl ICCProfile {
 
     pub(super) fn is_lab(&self) -> bool {
         self.0.is_lab
+    }
+
+    pub(super) fn raw_data(&self) -> Option<&[u8]> {
+        self.0.raw_data.as_deref()
     }
 
     fn transform_u8(&self) -> Option<&Arc<Transform8BitExecutor>> {

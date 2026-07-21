@@ -258,6 +258,56 @@ impl ColorSpaceType {
     }
 }
 
+/// Top-level classification of a color space.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ColorSpaceKind {
+    /// The `DeviceGray` color space.
+    DeviceGray,
+    /// The `DeviceRGB` color space.
+    DeviceRgb,
+    /// The `DeviceCMYK` color space.
+    DeviceCmyk,
+    /// A `CalGray` color space.
+    CalGray,
+    /// A `CalRGB` color space.
+    CalRgb,
+    /// A `Lab` color space.
+    Lab,
+    /// An `ICCBased` color space.
+    ///
+    /// Note that ICC profiles flagged as sRGB are represented as
+    /// [`ColorSpaceKind::DeviceRgb`] instead, and profiles that fail to
+    /// parse fall back to their alternate color space — in both cases the
+    /// decoded samples are unaffected.
+    ICCBased,
+    /// An `Indexed` color space.
+    Indexed,
+    /// A `Separation` color space.
+    ///
+    /// Component values are tint values, not color components in the
+    /// alternate color space.
+    Separation,
+    /// A `DeviceN` color space.
+    ///
+    /// Component values are tint values, not color components in the
+    /// alternate color space.
+    DeviceN,
+    /// The `Pattern` color space.
+    Pattern,
+}
+
+/// A view into the structure of an [`Indexed`](ColorSpaceKind::Indexed)
+/// color space.
+pub struct IndexedView<'a> {
+    /// The base color space the palette entries are defined in.
+    pub base: &'a ColorSpace,
+    /// The highest valid index value.
+    pub hival: u8,
+    /// The palette, flattened to `(hival + 1) * base.num_components()`
+    /// bytes.
+    pub palette: Vec<u8>,
+}
+
 /// A PDF color space.
 #[derive(Debug, Clone)]
 pub struct ColorSpace(Arc<ColorSpaceType>);
@@ -310,6 +360,47 @@ impl ColorSpace {
     /// Return `true` if the current color space is an indexed color space.
     pub(crate) fn is_indexed(&self) -> bool {
         matches!(self.0.as_ref(), ColorSpaceType::Indexed(_))
+    }
+
+    /// Return the kind of the color space.
+    pub fn kind(&self) -> ColorSpaceKind {
+        match self.0.as_ref() {
+            ColorSpaceType::DeviceGray(_) => ColorSpaceKind::DeviceGray,
+            ColorSpaceType::DeviceRgb(_) => ColorSpaceKind::DeviceRgb,
+            ColorSpaceType::DeviceCmyk(_) => ColorSpaceKind::DeviceCmyk,
+            ColorSpaceType::CalGray(_) => ColorSpaceKind::CalGray,
+            ColorSpaceType::CalRgb(_) => ColorSpaceKind::CalRgb,
+            ColorSpaceType::Lab(_) => ColorSpaceKind::Lab,
+            ColorSpaceType::ICCBased(_) => ColorSpaceKind::ICCBased,
+            ColorSpaceType::Indexed(_) => ColorSpaceKind::Indexed,
+            ColorSpaceType::Separation(_) => ColorSpaceKind::Separation,
+            ColorSpaceType::DeviceN(_) => ColorSpaceKind::DeviceN,
+            ColorSpaceType::Pattern(_) => ColorSpaceKind::Pattern,
+        }
+    }
+
+    /// Return a view into the structure of the color space, if it is an
+    /// indexed color space.
+    ///
+    /// The palette is flattened on each call.
+    pub fn as_indexed(&self) -> Option<IndexedView<'_>> {
+        match self.0.as_ref() {
+            ColorSpaceType::Indexed(indexed) => Some(IndexedView {
+                base: indexed.base(),
+                hival: indexed.hival(),
+                palette: indexed.flattened_palette(),
+            }),
+            _ => None,
+        }
+    }
+
+    /// Return the raw ICC profile data, if the color space is an ICC-based
+    /// color space with a retained profile.
+    pub fn icc_profile(&self) -> Option<&[u8]> {
+        match self.0.as_ref() {
+            ColorSpaceType::ICCBased(icc) => icc.raw_data(),
+            _ => None,
+        }
     }
 
     pub(crate) fn indexed_hival(&self) -> Option<u8> {
@@ -414,7 +505,7 @@ impl ColorSpace {
     }
 
     /// Get the number of components of the color space.
-    pub(crate) fn num_components(&self) -> u8 {
+    pub fn num_components(&self) -> u8 {
         match self.0.as_ref() {
             ColorSpaceType::DeviceCmyk(_) => 4,
             ColorSpaceType::DeviceGray(_) => 1,

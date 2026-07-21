@@ -1,5 +1,5 @@
 use crate::CacheKey;
-use crate::color::Color;
+use crate::color::{Color, ColorSpace};
 use crate::pattern::Pattern;
 use crate::util::hash128;
 use crate::x_object::ImageXObject;
@@ -105,6 +105,15 @@ impl RasterImage<'_> {
     /// This allows you to get access to the raw encoded image data, without doing any decoding.
     pub fn stream(&self) -> &Stream<'_> {
         self.0.stream()
+    }
+
+    /// Return the color space of the image, if it has one.
+    ///
+    /// This is the color space the image declares (either directly or as a
+    /// named resource). Images without one (e.g. JPX-encoded images, which
+    /// carry their color space in the codestream) return `None`.
+    pub fn color_space(&self) -> Option<&ColorSpace> {
+        self.0.color_space.as_ref()
     }
 
     // These are hidden since clients are supposed to call get the
