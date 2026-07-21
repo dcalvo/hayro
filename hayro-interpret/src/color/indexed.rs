@@ -60,6 +60,14 @@ impl Indexed {
         self.hival
     }
 
+    pub(super) fn base(&self) -> &ColorSpace {
+        &self.base
+    }
+
+    pub(super) fn flattened_palette(&self) -> Vec<u8> {
+        self.values.concat()
+    }
+
     fn convert_inner(&self, input: &[u8], output: &mut [u8]) -> Option<()> {
         let mut indexed = vec![0; input.len() * self.base.num_components() as usize];
 
