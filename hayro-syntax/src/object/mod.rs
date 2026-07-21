@@ -10,7 +10,7 @@ pub use crate::object::number::Number;
 pub use crate::object::rect::Rect;
 pub use crate::object::r#ref::{MaybeRef, ObjRef};
 pub use crate::object::stream::Stream;
-pub use crate::object::string::String;
+pub use crate::object::string::{String, decode_text_string};
 use crate::reader::Reader;
 use crate::reader::{Readable, ReaderContext, ReaderExt, Skippable};
 use core::fmt::{Debug, Display, Formatter};

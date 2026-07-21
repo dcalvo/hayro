@@ -37,6 +37,100 @@ impl<'a> String<'a> {
     pub fn as_bytes(&self) -> &[u8] {
         self.as_ref()
     }
+
+    /// Decode the string as a PDF text string.
+    ///
+    /// See [`decode_text_string`].
+    pub fn to_text_string(&self) -> alloc::string::String {
+        decode_text_string(self.as_ref())
+    }
+}
+
+/// Decode a PDF text string (see 7.9.2.2) into a Rust string.
+///
+/// The bytes are interpreted as UTF-16BE if they start with the byte order
+/// marker `FE FF`, as UTF-8 if they start with `EF BB BF`, and as
+/// `PDFDocEncoding` (see Annex D.2) otherwise. Malformed code units and
+/// undefined `PDFDocEncoding` code points decode as U+FFFD.
+///
+/// Note that this interpretation only applies to strings of type
+/// *text string* (e.g. metadata entries, outline titles, annotation
+/// contents) — not to strings in content streams, whose interpretation
+/// is determined by the active font's encoding.
+pub fn decode_text_string(bytes: &[u8]) -> alloc::string::String {
+    if let Some(utf16) = bytes.strip_prefix(&[0xFE, 0xFF]) {
+        let chunks = utf16.chunks_exact(2);
+        let dangling = !chunks.remainder().is_empty();
+        let code_units: Vec<u16> = chunks.map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+        let mut decoded = alloc::string::String::from_utf16_lossy(&code_units);
+
+        if dangling {
+            decoded.push('\u{FFFD}');
+        }
+
+        return decoded;
+    }
+
+    if let Some(utf8) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+        return alloc::string::String::from_utf8_lossy(utf8).into_owned();
+    }
+
+    bytes.iter().map(|&b| pdf_doc_encoding_char(b)).collect()
+}
+
+/// Decode a single `PDFDocEncoding` byte (see Annex D.2).
+///
+/// The encoding matches Latin-1 except for the code points listed explicitly
+/// below: the 0x18-0x1F range holds spacing accents, the 0x80-0xA0 block
+/// holds typographic glyphs, and the undefined code points decode as U+FFFD.
+fn pdf_doc_encoding_char(byte: u8) -> char {
+    match byte {
+        // Undefined code points.
+        0x00..=0x08 | 0x0B | 0x0C | 0x0E..=0x17 | 0x7F | 0x9F | 0xAD => '\u{FFFD}',
+        0x18 => '\u{02D8}', // breve
+        0x19 => '\u{02C7}', // caron
+        0x1A => '\u{02C6}', // circumflex
+        0x1B => '\u{02D9}', // dotaccent
+        0x1C => '\u{02DD}', // hungarumlaut
+        0x1D => '\u{02DB}', // ogonek
+        0x1E => '\u{02DC}', // tilde
+        0x1F => '\u{02DA}', // ring
+        0x80 => '\u{2022}', // bullet
+        0x81 => '\u{2020}', // dagger
+        0x82 => '\u{2021}', // daggerdbl
+        0x83 => '\u{2026}', // ellipsis
+        0x84 => '\u{2014}', // emdash
+        0x85 => '\u{2013}', // endash
+        0x86 => '\u{0192}', // florin
+        0x87 => '\u{2044}', // fraction
+        0x88 => '\u{2039}', // guilsinglleft
+        0x89 => '\u{203A}', // guilsinglright
+        0x8A => '\u{2212}', // minus
+        0x8B => '\u{2030}', // perthousand
+        0x8C => '\u{201E}', // quotedblbase
+        0x8D => '\u{201C}', // quotedblleft
+        0x8E => '\u{201D}', // quotedblright
+        0x8F => '\u{2018}', // quoteleft
+        0x90 => '\u{2019}', // quoteright
+        0x91 => '\u{201A}', // quotesinglbase
+        0x92 => '\u{2122}', // trademark
+        0x93 => '\u{FB01}', // fi
+        0x94 => '\u{FB02}', // fl
+        0x95 => '\u{0141}', // Lslash
+        0x96 => '\u{0152}', // OE
+        0x97 => '\u{0160}', // Scaron
+        0x98 => '\u{0178}', // Ydieresis
+        0x99 => '\u{017D}', // Zcaron
+        0x9A => '\u{0131}', // dotlessi
+        0x9B => '\u{0142}', // lslash
+        0x9C => '\u{0153}', // oe
+        0x9D => '\u{0161}', // scaron
+        0x9E => '\u{017E}', // zcaron
+        0xA0 => '\u{20AC}', // Euro
+        // ASCII (incl. the 0x09/0x0A/0x0D whitespace) and the remaining
+        // Latin-1 range are identity.
+        _ => byte as char,
+    }
 }
 
 impl Deref for String<'_> {
