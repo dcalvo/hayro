@@ -356,7 +356,6 @@ pub(crate) struct StandardKind {
     missing_width: f32,
     fallback: bool,
     code_to_glyph: RefCell<FxHashMap<u8, GlyphId>>,
-    glyph_to_code: RefCell<FxHashMap<GlyphId, u8>>,
     encodings: FxHashMap<u8, String>,
 }
 
@@ -393,7 +392,6 @@ impl StandardKind {
             missing_width,
             encodings: encoding_map,
             code_to_glyph: RefCell::new(FxHashMap::default()),
-            glyph_to_code: RefCell::new(FxHashMap::default()),
             fallback,
             encoding,
         })
@@ -431,23 +429,28 @@ impl StandardKind {
             })
             .unwrap_or(GlyphId::NOTDEF);
         code_to_glyph.insert(code, result);
-        self.glyph_to_code.borrow_mut().insert(result, code);
 
         result
     }
 
-    pub(crate) fn outline_glyph(&self, glyph: GlyphId) -> BezPath {
+    /// Outline the glyph `code` mapped to, stretched to the width `code` is
+    /// declared with.
+    ///
+    /// The character code has to be passed in, not recovered from `glyph`: the
+    /// mapping is many-to-one (two codes whose glyph names resolve to the same
+    /// glyph in the substituted blob), and the two codes can be declared with
+    /// different widths. Inverting it picks an arbitrary one of them and
+    /// stretches the glyph to a width the text machinery never advanced by.
+    pub(crate) fn outline_glyph(&self, glyph: GlyphId, code: u8) -> BezPath {
         let path = self.base_font_blob.outline_glyph(glyph);
 
         // If the font is not embedded, we might need to stretch it so that
         // it matches the metrics of the actual underlying font blob.
 
-        if let Some(code) = self.glyph_to_code.borrow().get(&glyph).copied()
-            && let Some(actual_width) = self.base_font_blob.advance_width(glyph).or_else(|| {
-                self.code_to_ps_name(code)
-                    .and_then(|name| self.base_font.get_width(name))
-            })
-        {
+        if let Some(actual_width) = self.base_font_blob.advance_width(glyph).or_else(|| {
+            self.code_to_ps_name(code)
+                .and_then(|name| self.base_font.get_width(name))
+        }) {
             // From my experiments: Most PDF viewers, if they detect a font is a
             // standard font, they completely ignore the widths array, even if
             // different widths are indicated there. So only if it's an unknown

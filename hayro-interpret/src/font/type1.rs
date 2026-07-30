@@ -92,9 +92,11 @@ impl Type1Font {
         }
     }
 
-    pub(crate) fn outline_glyph(&self, glyph: GlyphId) -> BezPath {
+    pub(crate) fn outline_glyph(&self, glyph: GlyphId, code: u32) -> BezPath {
         match &self.1 {
-            Kind::Standard(s) => s.outline_glyph(glyph),
+            // A substituted glyph is stretched to the width the code declares,
+            // so the code has to come from the caller — see the callee's docs.
+            Kind::Standard(s) => s.outline_glyph(glyph, code as u8),
             Kind::Cff(c) => c.outline_glyph(glyph),
             Kind::Type1(t) => t.outline_glyph(glyph),
         }

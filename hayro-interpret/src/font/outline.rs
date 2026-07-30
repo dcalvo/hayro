@@ -129,8 +129,8 @@ impl OutlineFont {
 
     pub(crate) fn outline_glyph(&self, glyph: GlyphId, code: u32) -> BezPath {
         match self {
-            Self::Type1(t) => t.outline_glyph(glyph),
-            Self::TrueType(t) => t.outline_glyph(glyph),
+            Self::Type1(t) => t.outline_glyph(glyph, code),
+            Self::TrueType(t) => t.outline_glyph(glyph, code),
             Self::Type0(t) => t.outline_glyph(glyph, code),
         }
     }

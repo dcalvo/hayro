@@ -96,10 +96,12 @@ impl TrueTypeFont {
         }
     }
 
-    pub(crate) fn outline_glyph(&self, glyph: GlyphId) -> BezPath {
+    pub(crate) fn outline_glyph(&self, glyph: GlyphId, code: u32) -> BezPath {
         match &self.kind {
             Kind::Embedded(e) => e.outline_glyph(glyph),
-            Kind::Standard(s) => s.outline_glyph(glyph),
+            // A substituted glyph is stretched to the width the code declares,
+            // so the code has to come from the caller — see the callee's docs.
+            Kind::Standard(s) => s.outline_glyph(glyph, code as u8),
         }
     }
 
