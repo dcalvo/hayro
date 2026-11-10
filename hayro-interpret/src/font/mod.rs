@@ -154,6 +154,23 @@ impl<'a> Type3Glyph<'a> {
     pub fn advance_width(&self) -> Option<f32> {
         Some(self.glyph.advance_width())
     }
+
+    /// Get the glyph ID within the font.
+    pub fn glyph_id(&self) -> GlyphId {
+        self.glyph.glyph_id()
+    }
+
+    /// Get a cache key that uniquely identifies the backing Type3 font.
+    ///
+    /// Useful for grouping glyphs by font.
+    pub fn font_cache_key(&self) -> u128 {
+        self.glyph.font().cache_key()
+    }
+
+    /// Get the font's `/FontMatrix`.
+    pub fn font_matrix(&self) -> Affine {
+        self.glyph.font().matrix()
+    }
 }
 
 impl CacheKey for Type3Glyph<'_> {

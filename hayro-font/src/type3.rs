@@ -163,7 +163,8 @@ impl<'a> Type3Font<'a> {
             .and_then(|name| glyph_name_to_unicode(name, false))
     }
 
-    pub(crate) fn cache_key(&self) -> u128 {
+    /// A cache key that identifies the font (its dictionary).
+    pub fn cache_key(&self) -> u128 {
         self.dict.cache_key()
     }
 
