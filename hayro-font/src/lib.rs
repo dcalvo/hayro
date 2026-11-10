@@ -101,7 +101,7 @@ impl GlyphId {
 
 /// A PDF font.
 #[derive(Clone, Debug)]
-pub struct Font<'a>(FontType<'a>);
+pub struct Font<'a>(FontType<'a>, u128);
 
 impl<'a> Font<'a> {
     /// Map a character code to a glyph.
@@ -137,7 +137,7 @@ impl<'a> Font<'a> {
             }
         };
 
-        FontGlyph::Outline(OutlineGlyph::new(font, glyph, char_code))
+        FontGlyph::Outline(OutlineGlyph::new(font, self.1, glyph, char_code))
     }
 
     /// Return the horizontal scale factor that stretches a glyph to the width the PDF
@@ -213,13 +213,16 @@ impl<'a> Font<'a> {
             _ => return None,
         };
 
-        Some(Self(f_type))
+        Some(Self(f_type, dict.cache_key()))
     }
 
     fn new_standard(standard_font: StandardFont, loader: &ProgramLoader<'_>) -> Option<Self> {
         let font = Type1Font::new_standard(standard_font, loader)?;
 
-        Some(Self(FontType::Type1(Rc::new(font))))
+        Some(Self(
+            FontType::Type1(Rc::new(font)),
+            hash128(&("standard font", standard_font)),
+        ))
     }
 }
 
@@ -319,6 +322,7 @@ pub struct OutlineGlyph {
     program: FontProgram,
     hidden: bool,
     font: OutlineFont,
+    font_key: u128,
     char_code: u32,
 }
 
@@ -380,6 +384,14 @@ impl OutlineGlyph {
         self.font.glyph_advance_width(self.char_code)
     }
 
+    /// Get a cache key that uniquely identifies the backing font (its font dictionary).
+    ///
+    /// This identifies the font even when `font_data()` returns `None` (e.g. for Type1
+    /// fonts). Useful for grouping glyphs by font.
+    pub fn font_cache_key(&self) -> u128 {
+        self.font_key
+    }
+
     /// Returns the top-level classification of the font backing this glyph.
     pub fn font_kind(&self) -> FontKind {
         self.font.font_kind()
@@ -401,12 +413,13 @@ impl OutlineGlyph {
         self.font.postscript_name()
     }
 
-    fn new(font: OutlineFont, id: GlyphId, char_code: u32) -> Self {
+    fn new(font: OutlineFont, font_key: u128, id: GlyphId, char_code: u32) -> Self {
         Self {
             id,
             program: font.program(),
             hidden: id == GlyphId::NOTDEF && font.hides_notdef(),
             font,
+            font_key,
             char_code,
         }
     }
