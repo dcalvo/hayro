@@ -24,6 +24,17 @@ pub struct OutlineFontData {
     pub is_monospace: bool,
 }
 
+/// Top-level classification of an outline font.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum FontKind {
+    /// A Type1 font (including `MMType1` and CFF-in-Type1).
+    Type1,
+    /// A TrueType or OpenType font (PDF font subtype `TrueType` or `OpenType`).
+    TrueType,
+    /// A Type0 / composite / CID font.
+    Type0,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum OutlineFont {
     Type1(Rc<Type1Font>),
@@ -37,6 +48,30 @@ impl OutlineFont {
             Self::Type1(t) => t.program(),
             Self::TrueType(t) => t.program(),
             Self::Type0(t) => t.program(),
+        }
+    }
+
+    pub(crate) fn font_kind(&self) -> FontKind {
+        match self {
+            Self::Type1(_) => FontKind::Type1,
+            Self::TrueType(_) => FontKind::TrueType,
+            Self::Type0(_) => FontKind::Type0,
+        }
+    }
+
+    pub(crate) fn is_embedded(&self) -> bool {
+        match self {
+            Self::Type1(t) => t.is_embedded(),
+            Self::TrueType(t) => t.is_embedded(),
+            Self::Type0(t) => t.is_embedded(),
+        }
+    }
+
+    pub(crate) fn postscript_name(&self) -> Option<&str> {
+        match self {
+            Self::Type1(_) => None,
+            Self::TrueType(t) => t.postscript_name(),
+            Self::Type0(t) => t.postscript_name(),
         }
     }
 

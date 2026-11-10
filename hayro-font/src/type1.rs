@@ -73,6 +73,10 @@ impl Type1Font {
         matches!(self.0, Kind::Standard(_))
     }
 
+    pub(crate) fn is_embedded(&self) -> bool {
+        matches!(self.0, Kind::Embedded(_))
+    }
+
     pub(crate) fn glyph_stretch(&self, glyph: GlyphId, code: u8) -> f64 {
         match &self.0 {
             Kind::Standard(s) => s.glyph_stretch(glyph, code),

@@ -54,7 +54,7 @@ mod util;
 pub use hayro_cmap;
 pub use hayro_syntax;
 pub use kurbo;
-pub use outline::OutlineFontData;
+pub use outline::{FontKind, OutlineFontData};
 pub use standard_font::StandardFont;
 pub use type3::{Type3Font, Type3Glyph};
 
@@ -378,6 +378,27 @@ impl OutlineGlyph {
     /// this glyph before drawing the next one.
     pub fn advance_width(&self) -> Option<f32> {
         self.font.glyph_advance_width(self.char_code)
+    }
+
+    /// Returns the top-level classification of the font backing this glyph.
+    pub fn font_kind(&self) -> FontKind {
+        self.font.font_kind()
+    }
+
+    /// Whether the backing font is embedded in the PDF.
+    ///
+    /// Returns `false` when the font was substituted at load time (the
+    /// glyph outlines come from a fallback font, not the original).
+    pub fn is_embedded(&self) -> bool {
+        self.font.is_embedded()
+    }
+
+    /// Returns the PostScript name of the backing font, if known.
+    ///
+    /// Available for TrueType and Type0/CID fonts (from the PDF `/BaseFont`
+    /// entry). Returns `None` for Type1 fonts.
+    pub fn postscript_name(&self) -> Option<&str> {
+        self.font.postscript_name()
     }
 
     fn new(font: OutlineFont, id: GlyphId, char_code: u32) -> Self {

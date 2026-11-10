@@ -21,16 +21,22 @@ use std::ops::Deref;
 pub(crate) struct TrueTypeFont {
     kind: Kind,
     to_unicode: Option<CMap>,
+    /// The `/BaseFont` name, kept for non-embedded fonts whose program is a stand-in.
+    base_font_name: Option<String>,
 }
 
 impl TrueTypeFont {
     pub(crate) fn new(dict: &Dict<'_>, loader: &FontLoader<'_>) -> Option<Self> {
         let to_unicode = read_to_unicode(dict, loader.cmap_resolver);
+        let base_font_name = dict
+            .get::<Name<'_>>(BASE_FONT)
+            .map(|n| strip_subset_prefix(n.as_str()).to_string());
 
         if let Some(embedded) = EmbeddedKind::new(dict, loader) {
             return Some(Self {
                 kind: Kind::Embedded(embedded),
                 to_unicode,
+                base_font_name,
             });
         }
 
@@ -46,6 +52,7 @@ impl TrueTypeFont {
                     &loader.programs,
                 )?),
                 to_unicode: to_unicode.clone(),
+                base_font_name: base_font_name.clone(),
             })
         };
 
@@ -53,6 +60,7 @@ impl TrueTypeFont {
             Some(Self {
                 kind: Kind::Standard(standard),
                 to_unicode,
+                base_font_name,
             })
         } else {
             fallback()
@@ -68,6 +76,10 @@ impl TrueTypeFont {
 
     pub(crate) fn is_standard(&self) -> bool {
         matches!(self.kind, Kind::Standard(_))
+    }
+
+    pub(crate) fn is_embedded(&self) -> bool {
+        matches!(self.kind, Kind::Embedded(_))
     }
 
     pub(crate) fn glyph_stretch(&self, glyph: GlyphId, code: u8) -> f64 {
@@ -87,7 +99,7 @@ impl TrueTypeFont {
     pub(crate) fn postscript_name(&self) -> Option<&str> {
         match &self.kind {
             Kind::Embedded(e) => e.postscript_name.as_deref(),
-            Kind::Standard(_) => None,
+            Kind::Standard(_) => self.base_font_name.as_deref(),
         }
     }
 

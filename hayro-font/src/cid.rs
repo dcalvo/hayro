@@ -253,6 +253,10 @@ impl Type0Font {
     }
 
     /// Get the PostScript name.
+    pub(crate) fn is_embedded(&self) -> bool {
+        !self.fallback
+    }
+
     pub(crate) fn postscript_name(&self) -> Option<&str> {
         self.postscript_name.as_deref()
     }
