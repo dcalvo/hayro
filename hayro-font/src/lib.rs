@@ -384,6 +384,19 @@ impl OutlineGlyph {
         self.font.glyph_advance_width(self.char_code)
     }
 
+    /// Get the horizontal scale factor applied to this glyph's outline so that it fills
+    /// the width the PDF declares for its character code (see [`Font::glyph_stretch`]).
+    ///
+    /// The interpreter applies it as `scale_non_uniform(stretch, 1.0)` at the glyph end
+    /// of the glyph's transform, so the transform is in the stretched space while
+    /// [`OutlineGlyph::advance_width`] is the declared width. `1.0` unless the font
+    /// was substituted (not embedded) and the substitute's advance for the glyph
+    /// differs from the declared one: a narrow font drawn with a wide substitute
+    /// squeezes each glyph below `1.0`.
+    pub fn stretch(&self) -> f64 {
+        self.font.glyph_stretch(self.id, self.char_code)
+    }
+
     /// Get a cache key that uniquely identifies the backing font (its font dictionary).
     ///
     /// This identifies the font even when `font_data()` returns `None` (e.g. for Type1

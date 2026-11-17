@@ -1,3 +1,4 @@
+use crate::GlyphId;
 use crate::cid::Type0Font;
 use crate::program::FontProgram;
 use crate::true_type::TrueTypeFont;
@@ -90,6 +91,16 @@ impl OutlineFont {
             Self::Type1(t) => t.char_code_to_unicode(char_code),
             Self::TrueType(t) => t.char_code_to_unicode(char_code),
             Self::Type0(t) => t.char_code_to_unicode(char_code),
+        }
+    }
+
+    /// Get the horizontal stretch applied to a glyph's outline so that it fills the
+    /// width declared for its character code (see `Font::glyph_stretch`).
+    pub(crate) fn glyph_stretch(&self, glyph: GlyphId, char_code: u32) -> f64 {
+        match self {
+            Self::Type1(t) => t.glyph_stretch(glyph, char_code as u8),
+            Self::TrueType(t) => t.glyph_stretch(glyph, char_code as u8),
+            Self::Type0(t) => t.glyph_stretch(glyph, char_code),
         }
     }
 
